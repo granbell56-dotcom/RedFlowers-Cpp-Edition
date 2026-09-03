@@ -4,6 +4,8 @@ RedFlowers C++ Edition est un terminal interactif Windows en C++17. Il regroupe 
 
 > Projet expérimental destiné au diagnostic sur une machine de test ou sur des processus que vous êtes autorisé à analyser. Certaines opérations, comme la suspension temporaire d'un thread, peuvent perturber un programme.
 
+> **Statut : version de test.** Le projet n'est pas encore terminé et continuera d'être ajusté, amélioré et complété au fil du développement.
+
 ## Fonctionnalités
 
 - Affichage des informations CPU, RAM et espace d'adressage Windows.
