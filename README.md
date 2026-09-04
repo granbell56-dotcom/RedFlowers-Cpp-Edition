@@ -1,45 +1,55 @@
-# RedFlowers C++ Edition
+# RedFlower's - C++ Edition
 
-RedFlowers C++ Edition est un terminal interactif Windows en C++17. Il regroupe des outils d'information système, de diagnostic mémoire et d'observation des processus et threads.
-
-> Projet expérimental destiné au diagnostic sur une machine de test ou sur des processus que vous êtes autorisé à analyser. Certaines opérations, comme la suspension temporaire d'un thread, peuvent perturber un programme.
-
-> **Statut : version de test.** Le projet n'est pas encore terminé et continuera d'être ajusté, amélioré et complété au fil du développement.
+Outil Windows en ligne de commande pour observer le système courant et explorer
+certaines structures bas niveau d'un processus. Le programme affiche les
+informations directement dans le terminal et fonctionne sous la forme d'un
+shell interactif.
 
 ## Fonctionnalités
 
-- Affichage des informations CPU, RAM et espace d'adressage Windows.
-- Affichage des adaptateurs réseau, adresses IPv4, masques, passerelles et adresses MAC.
-- Énumération des processus actifs avec leur PID et leurs TID.
-- Énumération des threads d'un processus avec leur priorité de base.
-- Lecture du contexte d'un thread : RIP, RSP, RBP et registres généraux.
-- Inspection de l'état, du type et des permissions des régions mémoire du processus courant.
+- Informations système : nom du PC, processeur, nombre de threads CPU,
+  architecture, mémoire physique et espace d'adressage.
+- Informations des adaptateurs réseau : nom, description, IPv4, masque,
+  passerelle et adresse MAC.
+- Cartographie de la mémoire virtuelle avec `VirtualQuery`.
 - Identification d'une adresse mémoire et du module auquel elle appartient.
-- Élévation UAC automatique lorsque le programme n'est pas lancé en administrateur.
+- Analyse d'une image PE chargée en mémoire, de ses sections et de sa table
+  d'exports, avec recherche partielle d'une fonction.
+- Énumération des DLL/modules chargés via le PEB.
+- Liste des processus actifs et de leurs threads.
+- Lecture du contexte et de registres d'un thread.
+- Énumération de handles système (fichiers, sockets AFD, mutants et sections).
+- Relance automatique avec les privilèges administrateur lorsque l'UAC le
+  permet.
 
 ## Prérequis
 
-- Windows.
-- MinGW-w64 avec `g++`.
-- C++17 ou version plus récente.
-- Visual Studio Code est recommandé, mais pas obligatoire.
+- Windows (API Win32, Tool Help, PSAPI et API natives utilisées par le projet).
+- [MSYS2](https://www.msys2.org/) avec l'environnement UCRT64.
+- `g++` et `gdb` accessibles dans `C:\msys64\ucrt64\bin`.
+- Un terminal capable d'afficher l'UTF-8 et les séquences ANSI.
 
-Le projet utilise principalement les API Windows suivantes :
-
-- `Windows.h`
-- `TlHelp32.h`
-- `Psapi.h`
-- `Iphlpapi.h`
+Le chemin du compilateur configuré dans le projet est :
+`C:\msys64\ucrt64\bin\g++.exe`. Si MSYS2 est installé ailleurs, adaptez les
+commandes ou les fichiers `.vscode`.
 
 ## Compilation
 
-Depuis un terminal configuré avec MinGW-w64 :
+Depuis la racine du projet :
 
 ```powershell
-g++ -std=c++17 -finput-charset=UTF-8 -fexec-charset=UTF-8 RedFlowers.cpp -o RedFlowers.exe -liphlpapi
+C:\msys64\ucrt64\bin\g++.exe -std=c++17 -finput-charset=UTF-8 -fexec-charset=UTF-8 RedFlowers.cpp -o RedFlowers.exe -liphlpapi
 ```
 
-Dans Visual Studio Code, ouvrir `RedFlowers.cpp`, puis lancer la tâche de compilation avec `Ctrl+Shift+B`.
+La bibliothèque `iphlpapi` est nécessaire à la récupération des adaptateurs
+réseau.
+
+### Avec Visual Studio Code
+
+La tâche **Build C++ file** (`.vscode/tasks.json`) compile le fichier ouvert
+avec `g++` en C++17. La configuration **C++: gdb** (`.vscode/launch.json`)
+compile avant de lancer le programme. Le script `.vscode/run-cpp.js` permet
+également de compiler puis d'exécuter un fichier C++ passé en argument.
 
 ## Lancement
 
@@ -47,81 +57,72 @@ Dans Visual Studio Code, ouvrir `RedFlowers.cpp`, puis lancer la tâche de compi
 .\RedFlowers.exe
 ```
 
-Le programme peut demander une élévation UAC afin d'obtenir les droits nécessaires à certaines opérations de diagnostic.
+L'application demande d'abord un nom d'utilisateur, puis affiche une invite
+`RedFlower's@<nom>`. Aucun argument de ligne de commande n'est documenté :
+l'interface utilisateur est le shell interactif.
 
-## Commandes disponibles
+## Commandes
 
-### Commandes générales
-
-| Commande | Description |
-|---|---|
-| `get-help` | Affiche la liste des commandes. |
-| `clear` | Nettoie la console. |
-| `exit` | Ferme le programme. |
-
-### Informations système
+Les commandes ne tiennent pas compte de la casse. Utilisez `get-help` dans le
+programme pour réafficher cette liste.
 
 | Commande | Description |
-|---|---|
-| `get-system-info` | Affiche le nom de l'ordinateur, le CPU, la RAM et les paramètres d'adressage. |
-| `get-adapter-info` | Affiche les informations des adaptateurs réseau. |
+| --- | --- |
+| `get-help` | Affiche l'aide des commandes. |
+| `clear` | Efface le terminal. |
+| `exit` | Quitte le programme. |
+| `get-system-info` | Affiche le nom du PC, les informations CPU, la RAM et l'espace d'adressage. |
+| `get-adapter-info` | Liste les informations des adaptateurs réseau. |
+| `adresse` | Liste les régions mémoire virtuelles réservées ou engagées. |
+| `peek <adresse>` | Identifie une adresse hexadécimale, sa région, ses permissions et son module éventuel. Exemple : `peek 0x00007FF6...` |
+| `peek-all` | Liste les régions mémoire réservées ou engagées avec leur état, type et protection. |
+| `pe <adresse> [fonction]` | Analyse l'image PE à l'adresse indiquée. Le nom de fonction optionnel effectue une recherche partielle dans les exports. |
+| `peb` | Liste les modules chargés en parcourant le PEB. |
+| `ps` | Liste les processus actifs avec leur PID et les TID associés. |
+| `threads [PID]` | Liste les threads du PID indiqué ; sans PID, utilise le processus courant. |
+| `thread-ctx <TID>` | Suspend brièvement le thread, lit son contexte (registres) puis le reprend. |
+| `handles [PID]` | Énumère les handles système, ou filtre sur un PID. |
 
-### Mémoire
+Les paramètres se saisissent après la commande, séparés par des espaces. Les
+adresses sont attendues au format hexadécimal ; les PID et TID doivent être
+numériques.
 
-| Commande | Description |
-|---|---|
-| `adresse` | Liste les régions mémoire engagées ou réservées du processus courant. |
-| `peek-all` | Affiche l'état, le type et les permissions des régions mémoire du processus courant. |
-| `peek <adresse>` | Identifie une adresse hexadécimale, par exemple `peek 0x7FF600000000`. |
+## Structure du projet
 
-### Processus et threads
+| Élément | Rôle |
+| --- | --- |
+| `RedFlowers.cpp` | Point d'entrée et initialisation de la console. |
+| `Menu.hpp` | Boucle interactive, lecture des commandes et routage vers les fonctionnalités. |
+| `System.hpp`, `CPU.hpp`, `RAM.hpp` | Informations système et mémoire physique. |
+| `Network.hpp` | Énumération des adaptateurs réseau. |
+| `adresse.hpp`, `peek.hpp`, `peek_identify.hpp` | Cartographie et inspection de la mémoire virtuelle. |
+| `RedFlowerPe.hpp` | Analyse des images PE et des exports. |
+| `RedFlowerPEB.hpp` | Énumération des modules via le PEB. |
+| `redflowersprocesses.hpp`, `redflowers_threads.hpp`, `threads-ctx.hpp` | Processus, threads et contexte des threads. |
+| `RedFlowerHandles.hpp` | Énumération des handles et activation de `SeDebugPrivilege`. |
+| `PONT.hpp`, `utils.hpp` | Liaison vers le menu et configuration de la console. |
+| `.vscode/` | Tâche de compilation, lancement GDB et configuration Code Runner. |
 
-| Commande | Description |
-|---|---|
-| `ps` | Liste les processus actifs avec leur PID, leurs TID et leur nom. |
-| `threads <PID>` | Liste les threads appartenant au PID indiqué. |
-| `thread-ctx <TID>` | Suspend brièvement le thread, lit son contexte puis le reprend. |
+## Limitations et précautions
 
-La commande `thread-ctx` annule la lecture après trois secondes si aucune réponse n'est obtenue.
-
-## Exemple
-
-```text
-$ ps
-PID         | TID(s)                         | Nom du Processus
-23984       | 18688, 17312, 11276, 13620    | RedFlowers.exe
-
-$ thread-ctx 18688
-```
-
-`thread-ctx` attend un **TID**, pas un PID.
-
-## Structure principale
-
-| Fichier | Rôle |
-|---|---|
-| `RedFlowers.cpp` | Point d'entrée du programme. |
-| `PONT.hpp` | Liaison entre le point d'entrée et le menu. |
-| `Menu.hpp` | Menu interactif et routage des commandes. |
-| `System.hpp` | Informations système Windows. |
-| `CPU.hpp`, `RAM.hpp` | Informations CPU et RAM. |
-| `Network.hpp` | Informations des adaptateurs réseau. |
-| `redflowersprocesses.hpp` | Énumération des processus et de leurs TID. |
-| `redflowers_threads.hpp` | Énumération des threads d'un PID. |
-| `threads-ctx.hpp` | Lecture des registres d'un thread. |
-| `adresse.hpp` | Cartographie des régions mémoire. |
-| `peek.hpp` | Analyse détaillée des régions mémoire. |
-| `peek_identify.hpp` | Identification d'une adresse et de son module. |
-| `utils.hpp` | Configuration UTF-8 de la console et fonctions utilitaires. |
-
-## Limitations et erreurs possibles
-
-- Windows peut refuser l'accès aux processus protégés, même avec une élévation administrateur.
-- Un TID peut disparaître entre la commande `ps` et `thread-ctx`.
-- `RIP` est une adresse d'instruction ; les registres seuls ne constituent pas un désassemblage.
-- Les résultats mémoire concernent le processus courant, pas un processus arbitraire.
-- L'architecture de compilation doit correspondre à l'environnement utilisé, notamment pour l'affichage des registres 32 bits ou 64 bits.
+- Le projet est spécifique à Windows et ne fournit pas de portabilité Linux ou
+  macOS.
+- Plusieurs fonctionnalités nécessitent une élévation administrateur et peuvent
+  échouer pour les processus protégés ou les threads auxquels l'accès est
+  refusé.
+- Les commandes mémoire inspectent l'espace du processus RedFlower courant ;
+  elles ne lisent ni ne modifient directement la mémoire d'un autre processus.
+- Le PEB, `NtQuerySystemInformation` et `NtQueryObject` sont des interfaces
+  internes/non documentées : leur disposition ou leur comportement peut varier
+  selon la version de Windows.
+- L'affichage des handles et des exports est volontairement limité pour éviter
+  de saturer le terminal (40 handles dans le mode global et 30 résultats pour
+  une recherche d'export).
+- `thread-ctx` suspend le thread ciblé pendant la lecture ; utilisez cette
+  commande avec prudence.
+- Il s'agit d'un outil d'observation et de diagnostic en cours de développement,
+  pas d'un produit de supervision ou d'un débogueur complet.
 
 ## Licence
 
-Aucune licence open source n'est actuellement indiquée dans le projet. Ajoutez une licence avant toute redistribution publique.
+Aucune licence n'est actuellement indiquée dans le dépôt.
