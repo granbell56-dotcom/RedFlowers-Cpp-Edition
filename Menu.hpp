@@ -107,7 +107,11 @@ void menu(int argc, char* argv[]) {
                 std::cout << "│" << std::endl;
                 std::cout << "│ ps                : Affiche tous les programmes en cours d'exécution avec leur PID et leur nombre de threads" << std::endl;
                 std::cout << "│" << std::endl;
-                std::cout << "│ thread-ctx" << std::endl;
+                std::cout << "│ thread-ctx <TID> : Affiche le contexte d'un thread (registre, état et informations du processeur)" << std::endl;
+                std::cout << "│" << std::endl;
+                std::cout << "│ pe <adresse> [nom-fonction] : Analyse une image PE en mémoire et affiche ses informations" << std::endl;
+                std::cout << "│" << std::endl;
+                std::cout << "│" << std::endl;
                 std::cout << "└───────────────────────────────────────────│" << std::endl;
             }
             else if(command == "clear") {
