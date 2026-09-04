@@ -17,6 +17,8 @@
 #include "redflowersprocesses.hpp"
 #include "threads-ctx.hpp"
 #include "RedFlowerPe.hpp"
+#include "RedFlowerHandles.hpp"
+#include "RedFlowerPEB.hpp"
 
 extern std::vector<std::string> logger_invalide;
 void menu(int argc, char* argv[]) {
@@ -79,40 +81,34 @@ void menu(int argc, char* argv[]) {
 
             if(command == "get-help") {
                 std::cout << "" << std::endl;
-                std::cout << "┌─/[Liste des commandes]/─>" << std::endl;
+                std::cout << "┌─/[ Liste des commandes ]─>" << std::endl;
                 std::cout << "│" << std::endl;
                 std::cout << "│============| Commandes de base |============│" << std::endl;
                 std::cout << "│" << std::endl;
-                std::cout << "│ clear            : Nettoyer l'écran." << std::endl;
-                std::cout << "│ exit             : Sortir du programme." << std::endl;
+                std::cout << "│ clear                     : Nettoie l'écran." << std::endl;
+                std::cout << "│ exit                      : Quitte le programme." << std::endl;
                 std::cout << "│" << std::endl;
                 std::cout << "│============| Informations système |============│" << std::endl;
                 std::cout << "│" << std::endl;
-                std::cout << "│ get-system-info  : Afficher les informations système" << std::endl;
+                std::cout << "│ get-system-info           : Affiche les informations système." << std::endl;
+                std::cout << "│ get-adapter-info          : Affiche les informations des adaptateurs réseau." << std::endl;
                 std::cout << "│" << std::endl;
-                std::cout << "│ get-adapter-info : Afficher les informations sur les adaptateurs réseau" << std::endl;
+                std::cout << "│============| Analyse mémoire |============│" << std::endl;
                 std::cout << "│" << std::endl;
+                std::cout << "│ peek [PID] <adresse>      : Identifie ce qu'une adresse mémoire représente (courante ou distante)." << std::endl;
+                std::cout << "│ peek-all [PID]            : Traduit et liste toute la mémoire d'un processus." << std::endl;
+                std::cout << "│ adresse                   : Affiche les adresses mémoire." << std::endl;
+                std::cout << "│ pe [PID] <adr> [fonction] : Analyse une structure PE en mémoire (courante ou distante)." << std::endl;
+                std::cout << "│ peb [PID]                 : Liste les DLL chargées via le PEB d'un processus." << std::endl;
                 std::cout << "│" << std::endl;
-                std::cout << "│============| Commande peek |============│" << std::endl;
+                std::cout << "│============| Processus & Threads |============│" << std::endl;
                 std::cout << "│" << std::endl;
-                std::cout << "│ peek <adresse>   : Identifie à quoi correspond une adresse mémoire" << std::endl;
+                std::cout << "│ threads [PID]             : Énumère et analyse les threads d'un processus." << std::endl;
+                std::cout << "│ thread-ctx <TID>          : Affiche le contexte d'un thread (registre, état, CPU)." << std::endl;
+                std::cout << "│ ps                        : Affiche les processus actifs avec leur PID et leur nombre de threads." << std::endl;
+                std::cout << "│ handles [PID]             : Énumère les ressources du système ou d'un PID." << std::endl;
                 std::cout << "│" << std::endl;
-                std::cout << "│ peek-all         : Traduit et liste toute la mémoire du processus" << std::endl;
-                std::cout << "│" << std::endl;
-                std::cout << "│ adresse : Affiche les adresse memoire" << std::endl;
-                std::cout << "│" << std::endl;
-                std::cout << "│============| Commande Threads/Processus|============│" << std::endl;
-                std::cout << "│" << std::endl;
-                std::cout << "│ threads <PID>     : Énumération et analyse du Threads" << std::endl;
-                std::cout << "│" << std::endl;
-                std::cout << "│ ps                : Affiche tous les programmes en cours d'exécution avec leur PID et leur nombre de threads" << std::endl;
-                std::cout << "│" << std::endl;
-                std::cout << "│ thread-ctx <TID> : Affiche le contexte d'un thread (registre, état et informations du processeur)" << std::endl;
-                std::cout << "│" << std::endl;
-                std::cout << "│ pe <adresse> [nom-fonction] : Analyse une image PE en mémoire et affiche ses informations" << std::endl;
-                std::cout << "│" << std::endl;
-                std::cout << "│" << std::endl;
-                std::cout << "└───────────────────────────────────────────│" << std::endl;
+                std::cout << "└───────────────────────────────────────────────┘" << std::endl;
             }
             else if(command == "clear") {
                 std::cout << "\033[2J\033[1;1H"; // Efface l'écran et place le curseur en haut à gauche
@@ -126,8 +122,15 @@ void menu(int argc, char* argv[]) {
             else if(command == "get-adapter-info") {
                 adapters_info();
             }
-            else if(command == "peek-all") {
-                peek_all_memory();
+            else if (command == "peek-all") {
+                DWORD target_pid = 0;
+                std::string pid;
+
+                if (std::cin.peek() != '\n' && std::cin.peek() != EOF) {
+                    std::cin >> pid;
+                    target_pid = static_cast<DWORD>(std::stoul(pid, nullptr, 0));
+                }
+                peek_all_memory(target_pid); // ou le nom de ta fonction pour peek-all
             }
             else if(command.rfind("peek", 0) == 0) {
                 std::string addr;
@@ -138,20 +141,12 @@ void menu(int argc, char* argv[]) {
             else if(command == "adresse") {
                 show_memory_maps();
             }
-            else if(command == "threads") {
-            std::string pid = "";
-
-            // Récupère l'argument s'il y en a un dans la ligne
-            if (std::cin.peek() != '\n' && std::cin.peek() != EOF) {
-                std::cin >> pid;
-
-            }
-
-            // Nettoie le reste de la ligne pour éviter les résidus
-            std::string dummy;
-            std::getline(std::cin, dummy);
-            list_process_threads(pid);
-
+            else if (command == "threads") {
+                std::string pid_arg;
+                if (std::cin.peek() != '\n' && std::cin.peek() != EOF) {
+                    std::cin >> pid_arg;
+                }
+                list_process_threads(pid_arg);
             }
             else if(command == "ps") {
                 list_all_processes();
@@ -205,15 +200,60 @@ void menu(int argc, char* argv[]) {
                     }
                 }
             }
-            else {
-                logger_invalide.push_back(command);
-                std::cerr << "Erreur la commande '" << command << "' n'existe pas. Tapez 'get-help' pour afficher la liste des commandes." << std::endl;
+            else if (command == "handles") {
+                std::string pid_str;
+                if (std::cin.peek() != '\n' && std::cin.peek() != EOF) {
+                    std::cin >> pid_str;
+                }
+
+                std::string dummy;
+                std::getline(std::cin, dummy);
+                DWORD target_pid = 0;
+                
+                if (!pid_str.empty()) {
+                    try {
+                        
+                        target_pid = std::stoul(pid_str);
+                    
+                    } catch (...) {
+                        std::cout << "[-] Erreur : PID invalide." << std::endl;
+                        continue;
+                    }
+                }
+                
+                enumerate_system_handles(target_pid);
+            }
+            if (command == "peb") {
+                DWORD pid = 0;
+
+                std::string pid_str;
+                if (std::cin.peek() != '\n' && std::cin.peek() != EOF) {
+                    std::cin >> pid_str;
+                }
+
+                std::string dummy;
+                std::getline(std::cin, dummy);
+
+                if (!pid_str.empty()) {
+                    try {
+
+                        pid = std::stoul(pid_str, nullptr, 0);
+
+                    } catch (...) {
+                        pid = GetCurrentProcessId(); // Fallback ou gestion d'erreur
+                    }
+                }
+                
+                enumerate_peb_modules(pid);
             }
         }
         catch (const std::exception& e) {
-            std::cerr << "Error: " << e.what() << std::endl;
+            std::cerr << "Erreur : " << e.what() << std::endl;
+            if (std::cin.eof() || std::cin.bad()) {
+                break;
+            }
+            std::cin.clear();
         }
-    
-    }
+        }
 
 }
