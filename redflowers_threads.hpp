@@ -9,6 +9,10 @@
 #include <iomanip>
 #include <string>
 
+
+// Version 2 ( Thread et PID )
+// Cette commande prend en charge le Thread PID redflowers_threads.hpp
+
 inline void list_process_threads(const std::string& pid_str = "") {
     DWORD target_pid = 0;
     
@@ -39,7 +43,7 @@ inline void list_process_threads(const std::string& pid_str = "") {
     }
 
     std::cout << "┌───[LISTE DES THREADS DU PROCESSUS (PID: " << target_pid << ")]──────────────┐" << std::endl;
-    std::cout << "│ ID du Thread (TID)  | PID Proprietaire  | Priorite de Base        │" << std::endl;
+    std::cout << "│ ID du Thread (TID)  | PID Proprietaire  | Priorite de Base         │" << std::endl;
     std::cout << "├─────────────────────┼───────────────────┼─────────────────────────┤" << std::endl;
 
     bool found = false;
@@ -54,7 +58,7 @@ inline void list_process_threads(const std::string& pid_str = "") {
     } while (Thread32Next(hSnapshot, &te32));
 
     if (!found) {
-        std::cout << "│ Aucun thread trouve pour ce PID.                                │" << std::endl;
+        std::cout << "│ Aucun thread trouve pour ce PID.                        │" << std::endl;
     }
 
     std::cout << "└─────────────────────────────────────────────────────────────────┘" << std::endl;
