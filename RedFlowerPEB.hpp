@@ -7,7 +7,11 @@
 #include <iomanip>
 #include <string>
 
+// Version 2 ( Changement du comportement, effet sur d'autre processus )
+// Désolé d'avoir bridé RedFlowerPEB.hpp
+
 // Structures non documentées pour la liste de chargement du PEB (LDR)
+
 typedef struct _LDR_DATA_TABLE_ENTRY_CUSTOM {
     LIST_ENTRY InLoadOrderLinks;
     LIST_ENTRY InMemoryOrderLinks;
@@ -17,11 +21,8 @@ typedef struct _LDR_DATA_TABLE_ENTRY_CUSTOM {
     ULONG SizeOfImage;
     UNICODE_STRING FullDllName;
     UNICODE_STRING BaseDllName;
-    // ... d'autres champs non nécessaires ici
 } LDR_DATA_TABLE_ENTRY_CUSTOM, *PLDR_DATA_TABLE_ENTRY_CUSTOM;
 
-// winternl.h intentionally exposes only a partial PEB_LDR_DATA definition.
-// Use the documented initial layout to access the load-order list.
 typedef struct _PEB_LDR_DATA_CUSTOM {
     ULONG Length;
     BOOLEAN Initialized;
@@ -30,55 +31,121 @@ typedef struct _PEB_LDR_DATA_CUSTOM {
     LIST_ENTRY InLoadOrderModuleList;
 } PEB_LDR_DATA_CUSTOM, *PPEB_LDR_DATA_CUSTOM;
 
-inline void enumerate_peb_modules() {
-    std::cout << "┌───[ÉNUMÉRATION PEB / MODULES CHARGÉS (Interne)]────────────────────┐" << std::endl;
+typedef struct _PROCESS_BASIC_INFORMATION_CUSTOM {
+    NTSTATUS Reserved1;
+    PPEB PebBaseAddress;
+    ULONG_PTR Reserved2[2];
+    ULONG_PTR UniqueProcessId;
+    ULONG_PTR Reserved3;
+} PROCESS_BASIC_INFORMATION_CUSTOM;
+
+inline void enumerate_peb_modules(DWORD target_pid = 0) {
+    bool is_remote = (target_pid != 0 && target_pid != GetCurrentProcessId());
+    HANDLE hProcess = GetCurrentProcess();
+
+    if (is_remote) {
+        hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, target_pid);
+        if (!hProcess) {
+            std::cout << "[-] Erreur : Impossible d'ouvrir le processus PID " << target_pid << " (Erreur: " << GetLastError() << ")" << std::endl;
+            return;
+        }
+    }
+
+    std::cout << "┌───[ÉNUMÉRATION PEB" << (is_remote ? " (PID: " + std::to_string(target_pid) + ")" : " (Courante)") << "]───────────────────────────────────┐" << std::endl;
     std::cout << "│ Base DLL       │ Taille    │ Nom du Module                       │" << std::endl;
     std::cout << "├────────────────┼───────────┼─────────────────────────────────────┤" << std::endl;
 
-#if defined(_WIN64)
-    PPEB pPeb = reinterpret_cast<PPEB>(__readgsqword(0x60));
-#else
-    PPEB pPeb = reinterpret_cast<PPEB>(__readfsdword(0x30));
-#endif
+    PPEB pPeb = nullptr;
 
-    if (!pPeb || !pPeb->Ldr) {
-        std::cout << "[-] Erreur : Impossible d'accéder au PEB ou à la structure Ldr." << std::endl;
+    if (is_remote) {
+        typedef NTSTATUS(NTAPI* pfnNtQueryInformationProcess)(HANDLE, ULONG, PVOID, ULONG, PULONG);
+        pfnNtQueryInformationProcess NtQueryInformationProcess = 
+            (pfnNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+
+        if (NtQueryInformationProcess) {
+            PROCESS_BASIC_INFORMATION_CUSTOM pbi;
+            ULONG returnLength = 0;
+            NTSTATUS status = NtQueryInformationProcess(hProcess, 0, &pbi, sizeof(pbi), &returnLength);
+            if (status == 0) {
+                pPeb = pbi.PebBaseAddress;
+            }
+        }
+    } else {
+#if defined(_WIN64)
+        pPeb = reinterpret_cast<PPEB>(__readgsqword(0x60));
+#else
+        pPeb = reinterpret_cast<PPEB>(__readfsdword(0x30));
+#endif
+    }
+
+    if (!pPeb) {
+        std::cout << "[-] Erreur : Impossible d'accéder au PEB du processus." << std::endl;
         std::cout << "└───────────────────────────────────────────────────────────────────┘" << std::endl;
+        if (is_remote) CloseHandle(hProcess);
         return;
     }
 
-    PPEB_LDR_DATA_CUSTOM pLdr = reinterpret_cast<PPEB_LDR_DATA_CUSTOM>(pPeb->Ldr);
-    PLIST_ENTRY pListHead = &pLdr->InLoadOrderModuleList;
-    PLIST_ENTRY pListEntry = pListHead->Flink;
+    PVOID pLdrRemote = nullptr;
+    if (is_remote) {
+        PPEB remotePebPtr = pPeb;
+        if (!ReadProcessMemory(hProcess, &(remotePebPtr->Ldr), &pLdrRemote, sizeof(PVOID), NULL) || !pLdrRemote) {
+            std::cout << "[-] Erreur : Impossible de lire la structure Ldr distante." << std::endl;
+            std::cout << "└───────────────────────────────────────────────────────────────────┘" << std::endl;
+            CloseHandle(hProcess);
+            return;
+        }
+    } else {
+        pLdrRemote = pPeb->Ldr;
+    }
+
+    PEB_LDR_DATA_CUSTOM ldrData;
+    if (!ReadProcessMemory(hProcess, pLdrRemote, &ldrData, sizeof(PEB_LDR_DATA_CUSTOM), NULL)) {
+        std::cout << "[-] Erreur : Impossible de lire les données Ldr." << std::endl;
+        std::cout << "└───────────────────────────────────────────────────────────────────┘" << std::endl;
+        if (is_remote) CloseHandle(hProcess);
+        return;
+    }
+
+    LIST_ENTRY* pListHeadRemote = &(reinterpret_cast<PPEB_LDR_DATA_CUSTOM>(pLdrRemote)->InLoadOrderModuleList);
+    LIST_ENTRY* pCurrentRemote = ldrData.InLoadOrderModuleList.Flink;
 
     size_t count = 0;
-    while (pListEntry != pListHead) {
-        PLDR_DATA_TABLE_ENTRY_CUSTOM pEntry = CONTAINING_RECORD(pListEntry, LDR_DATA_TABLE_ENTRY_CUSTOM, InLoadOrderLinks);
+    while (pCurrentRemote != pListHeadRemote && count < 200) {
+        BYTE* pEntryRemote = reinterpret_cast<BYTE*>(pCurrentRemote) - offsetof(LDR_DATA_TABLE_ENTRY_CUSTOM, InLoadOrderLinks);
 
-        if (pEntry->DllBase) {
-            std::wstring wName(pEntry->BaseDllName.Buffer, pEntry->BaseDllName.Length / sizeof(WCHAR));
-            std::string name(wName.begin(), wName.end());
+        LDR_DATA_TABLE_ENTRY_CUSTOM entry;
+        if (!ReadProcessMemory(hProcess, pEntryRemote, &entry, sizeof(LDR_DATA_TABLE_ENTRY_CUSTOM), NULL)) {
+            break;
+        }
 
-            if (name.empty()) {
-                name = "<Inconnu>";
+        if (entry.DllBase) {
+            std::string name = "<Inconnu>";
+            if (entry.BaseDllName.Buffer && entry.BaseDllName.Length > 0) {
+                std::wstring wName;
+                wName.resize(entry.BaseDllName.Length / sizeof(WCHAR));
+                if (ReadProcessMemory(hProcess, entry.BaseDllName.Buffer, &wName[0], entry.BaseDllName.Length, NULL)) {
+                    name = std::string(wName.begin(), wName.end());
+                }
             }
 
             if (name.length() > 33) {
                 name = name.substr(0, 30) + "...";
             }
 
-            std::cout << "│ 0x" << std::hex << std::uppercase << std::setw(12) << std::setfill('0') << reinterpret_cast<uintptr_t>(pEntry->DllBase)
-                      << " │ 0x" << std::setw(7) << pEntry->SizeOfImage
+            std::cout << "│ 0x" << std::hex << std::uppercase << std::setw(12) << std::setfill('0') << reinterpret_cast<uintptr_t>(entry.DllBase)
+                      << " │ 0x" << std::setw(7) << entry.SizeOfImage
                       << " │ " << std::setfill(' ') << std::left << std::setw(35) << name << " │" << std::endl;
             count++;
         }
 
-        pListEntry = pListEntry->Flink;
-        // Sécurité pour éviter les boucles infinies ou listes corrompues
-        if (count > 200) break; 
+        pCurrentRemote = entry.InLoadOrderLinks.Flink;
     }
 
     std::cout << "└───────────────────────────────────────────────────────────────────┘" << std::endl;
+
+    if (is_remote) {
+        CloseHandle(hProcess);
+    }
 }
 
 #endif
