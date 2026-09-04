@@ -16,7 +16,7 @@
 #include "redflowers_threads.hpp"
 #include "redflowersprocesses.hpp"
 #include "threads-ctx.hpp"
-
+#include "RedFlowerPe.hpp"
 
 extern std::vector<std::string> logger_invalide;
 void menu(int argc, char* argv[]) {
@@ -167,9 +167,39 @@ void menu(int argc, char* argv[]) {
                 get_thread_context(tid);
             
             }
-            else {
-                logger_invalide.push_back(command);
-                std::cerr << "Erreur la commande '" << command << "' n'existe pas. Tapez 'get-help' pour afficher la liste des commandes." << std::endl;
+            else if (command == "pe") {
+                std::string addr_str = "";
+                std::string func_name = "";
+                
+                // 1. Lire l'adresse si elle existe
+                
+                if (std::cin.peek() != '\n' && std::cin.peek() != EOF) {
+                    std::cin >> addr_str;
+                }
+                
+                // 2. Lire le nom de la fonction optionnel s'il est présent
+                if (std::cin.peek() != '\n' && std::cin.peek() != EOF) {
+                    std::cin >> func_name;
+                }
+                
+                // Vider le reste de la ligne
+                std::string dummy;
+                std::getline(std::cin, dummy);
+                
+                if (addr_str.empty()) {
+                    std::cerr << "Erreur : Veuillez specifier une adresse (ex: pe 0x7FFA07FA2000 [NomFonction])" << std::endl;
+                
+                }
+                else {
+                    
+                    try {
+                        uintptr_t addr = std::stoull(addr_str, nullptr, 16);
+                        parse_pe_from_memory(addr, func_name); // On passe le nom (éventuellement vide)
+                    
+                    } catch (...) {
+                        std::cerr << "Erreur : Adresse invalide." << std::endl;
+                    }
+                }
             }
         }
         catch (const std::exception& e)
