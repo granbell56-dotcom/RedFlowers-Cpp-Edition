@@ -7,7 +7,10 @@
 #include <windows.h>
 #include <psapi.h>
 
-inline void safe_peek_identify(const std::string& address_str) {
+// Version 2 ( Changement du comportement, effet sur d'autre processus )
+// Désolé d'avoir bridé peek_identify.hpp
+
+inline void safe_peek_identify(const std::string& address_str, DWORD target_pid = 0) {
     uintptr_t address = 0;
     try {
         address = std::stoull(address_str, nullptr, 16);
@@ -16,9 +19,21 @@ inline void safe_peek_identify(const std::string& address_str) {
         return;
     }
 
+    HANDLE hProcess = GetCurrentProcess();
+    bool is_remote = (target_pid != 0 && target_pid != GetCurrentProcessId());
+
+    if (is_remote) {
+        hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, target_pid);
+        if (!hProcess) {
+            std::cerr << "[-] Erreur : Impossible d'ouvrir le processus PID " << target_pid << " (Erreur: " << GetLastError() << ")" << std::endl;
+            return;
+        }
+    }
+
     MEMORY_BASIC_INFORMATION mbi;
-    if (VirtualQuery(reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
-        std::cerr << "[-] Erreur : Cette adresse n'est pas mappee en memoire." << std::endl;
+    if (VirtualQueryEx(hProcess, reinterpret_cast<LPCVOID>(address), &mbi, sizeof(mbi)) == 0) {
+        std::cerr << "[-] Erreur : Cette adresse n'est pas mappee en memoire pour ce processus." << std::endl;
+        if (is_remote) CloseHandle(hProcess);
         return;
     }
 
@@ -26,7 +41,6 @@ inline void safe_peek_identify(const std::string& address_str) {
     std::string module_name = "Inconnu (Memoire dynamique / Heap / Stack)";
     HMODULE hMods[1024];
     DWORD cbNeeded;
-    HANDLE hProcess = GetCurrentProcess();
 
     if (EnumProcessModules(hProcess, hMods, sizeof(hMods), &cbNeeded)) {
         for (unsigned int i = 0; i < (cbNeeded / sizeof(HMODULE)); i++) {
@@ -47,7 +61,7 @@ inline void safe_peek_identify(const std::string& address_str) {
     }
 
     // Affichage du rapport d'identification
-    std::cout << "┌───[IDENTIFICATION DE L'ADRESSE]─── 0x" << std::hex << std::uppercase << address << std::dec << std::endl;
+    std::cout << "┌───[IDENTIFICATION DE L'ADRESSE" << (is_remote ? " (PID: " + std::to_string(target_pid) + ")" : " (Courante)") << "]─── 0x" << std::hex << std::uppercase << address << std::dec << std::endl;
     std::cout << "│ [Appartenance] : " << module_name << std::endl;
     std::cout << "│ [Plage memoire]: 0x" << std::hex << std::uppercase << reinterpret_cast<uintptr_t>(mbi.BaseAddress) 
               << " -> 0x" << (reinterpret_cast<uintptr_t>(mbi.BaseAddress) + mbi.RegionSize) << std::dec << std::endl;
@@ -68,6 +82,10 @@ inline void safe_peek_identify(const std::string& address_str) {
     else if (mbi.Protect & PAGE_NOACCESS) protect_str = "Protege (Aucun acces)";
     std::cout << "│ [Permissions]  : " << protect_str << std::endl;
     std::cout << "└───────────────────────────────────────────────────────────────┘" << std::endl;
+
+    if (is_remote) {
+        CloseHandle(hProcess);
+    }
 }
 
 #endif
