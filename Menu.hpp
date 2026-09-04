@@ -201,9 +201,12 @@ void menu(int argc, char* argv[]) {
                     }
                 }
             }
+            else {
+                logger_invalide.push_back(command);
+                std::cerr << "Erreur la commande '" << command << "' n'existe pas. Tapez 'get-help' pour afficher la liste des commandes." << std::endl;
+            }
         }
-        catch (const std::exception& e)
-        {
+        catch (const std::exception& e) {
             std::cerr << "Error: " << e.what() << std::endl;
         }
     
