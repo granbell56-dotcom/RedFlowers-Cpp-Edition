@@ -8,6 +8,9 @@
 #include <string>
 #include <algorithm>
 
+// Version 2 ( Changement du comportement, effet sur d'autre processus )
+// Désolé d'avoir bridé RedFlowerPe.hpp
+
 inline void parse_pe_from_memory(uintptr_t input_address, const std::string& target_function = "") {
     MEMORY_BASIC_INFORMATION mbi;
     if (VirtualQuery(reinterpret_cast<LPCVOID>(input_address), &mbi, sizeof(mbi)) == 0) {
