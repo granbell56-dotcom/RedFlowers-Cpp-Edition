@@ -7,10 +7,7 @@
 #include <iomanip>
 #include <string>
 
-// Version 2 ( Changement du comportement, effet sur d'autre processus )
-// Désolé d'avoir bridé RedFlowerPEB.hpp
-
-// Structures non documentées pour la liste de chargement du PEB (LDR)
+// Version 3 (Parcours robuste et sécurisé du PEB distant via ReadProcessMemory)
 
 typedef struct _LDR_DATA_TABLE_ENTRY_CUSTOM {
     LIST_ENTRY InLoadOrderLinks;
@@ -52,21 +49,21 @@ inline void enumerate_peb_modules(DWORD target_pid = 0) {
     }
 
     std::cout << "┌───[ÉNUMÉRATION PEB" << (is_remote ? " (PID: " + std::to_string(target_pid) + ")" : " (Courante)") << "]───────────────────────────────────┐" << std::endl;
-    std::cout << "│ Base DLL       │ Taille    │ Nom du Module                       │" << std::endl;
+    std::cout << "│ Base DLL       │ Taille    │ Nom du Module                     │" << std::endl;
     std::cout << "├────────────────┼───────────┼─────────────────────────────────────┤" << std::endl;
 
     PPEB pPeb = nullptr;
 
     if (is_remote) {
         typedef NTSTATUS(NTAPI* pfnNtQueryInformationProcess)(HANDLE, ULONG, PVOID, ULONG, PULONG);
-        pfnNtQueryInformationProcess NtQueryInformationProcess = 
-            (pfnNtQueryInformationProcess)GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess");
+        auto NtQueryInformationProcess = 
+            reinterpret_cast<pfnNtQueryInformationProcess>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationProcess"));
 
         if (NtQueryInformationProcess) {
             PROCESS_BASIC_INFORMATION_CUSTOM pbi;
             ULONG returnLength = 0;
             NTSTATUS status = NtQueryInformationProcess(hProcess, 0, &pbi, sizeof(pbi), &returnLength);
-            if (status == 0) {
+            if (status >= 0) {
                 pPeb = pbi.PebBaseAddress;
             }
         }
@@ -86,16 +83,12 @@ inline void enumerate_peb_modules(DWORD target_pid = 0) {
     }
 
     PVOID pLdrRemote = nullptr;
-    if (is_remote) {
-        PPEB remotePebPtr = pPeb;
-        if (!ReadProcessMemory(hProcess, &(remotePebPtr->Ldr), &pLdrRemote, sizeof(PVOID), NULL) || !pLdrRemote) {
-            std::cout << "[-] Erreur : Impossible de lire la structure Ldr distante." << std::endl;
-            std::cout << "└───────────────────────────────────────────────────────────────────┘" << std::endl;
-            CloseHandle(hProcess);
-            return;
-        }
-    } else {
-        pLdrRemote = pPeb->Ldr;
+    PPEB remotePebPtr = pPeb;
+    if (!ReadProcessMemory(hProcess, &(remotePebPtr->Ldr), &pLdrRemote, sizeof(PVOID), NULL) || !pLdrRemote) {
+        std::cout << "[-] Erreur : Impossible de lire la structure Ldr distante." << std::endl;
+        std::cout << "└───────────────────────────────────────────────────────────────────┘" << std::endl;
+        if (is_remote) CloseHandle(hProcess);
+        return;
     }
 
     PEB_LDR_DATA_CUSTOM ldrData;
@@ -106,11 +99,12 @@ inline void enumerate_peb_modules(DWORD target_pid = 0) {
         return;
     }
 
-    LIST_ENTRY* pListHeadRemote = &(reinterpret_cast<PPEB_LDR_DATA_CUSTOM>(pLdrRemote)->InLoadOrderModuleList);
+    // Correction V3 : Résolution de l'adresse absolue de la tête de liste dans l'espace distant
+    uintptr_t pListHeadRemote = reinterpret_cast<uintptr_t>(pLdrRemote) + offsetof(PEB_LDR_DATA_CUSTOM, InLoadOrderModuleList);
     LIST_ENTRY* pCurrentRemote = ldrData.InLoadOrderModuleList.Flink;
 
     size_t count = 0;
-    while (pCurrentRemote != pListHeadRemote && count < 200) {
+    while (reinterpret_cast<uintptr_t>(pCurrentRemote) != pListHeadRemote && count < 200) {
         BYTE* pEntryRemote = reinterpret_cast<BYTE*>(pCurrentRemote) - offsetof(LDR_DATA_TABLE_ENTRY_CUSTOM, InLoadOrderLinks);
 
         LDR_DATA_TABLE_ENTRY_CUSTOM entry;
