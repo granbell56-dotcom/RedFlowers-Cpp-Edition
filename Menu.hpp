@@ -18,9 +18,7 @@
 #include "RedFlowerPe.hpp"
 #include "RedFlowerHandles.hpp"
 #include "RedFlowerPEB.hpp"
-
-// V2 de Menu.hpp
-// Clarification et mise a niveau PID
+#include "color.hpp"
 
 extern std::vector<std::string> logger_invalide;
 
@@ -36,14 +34,14 @@ inline void menu(int argc, char* argv[]) {
     std::cout << "developed by Luuxo" << std::endl;
     std::cout << "\n" << std::endl;
 
-    std::cout << "┌───────────────[LIST OF BETA TESTERS]──────────────────/─>" << std::endl;
-    std::cout << "│" << std::endl;
-    std::cout << "│ User name ( Discord ): luuxo2455_17235 | .luuxosozen." << std::endl;
-    std::cout << "│ User name ( Instagram ) : levraitwisty ( Twisty ) | luuxo43 ( Luuxo La )" << std::endl;
-    std::cout << "│" << std::endl;
-    std::cout << "│ [Message from the developer ( LUUXO ) ] Thanks to the beta tester :) " << std::endl;
-    std::cout << "│" << std::endl;
-    std::cout << "└────────────────────────────────────────────────────────/─>" << std::endl;
+    std::cout << Color::DARK_GRAY << "┌───────────────[LIST OF BETA TESTERS]──────────────────/─>" << Color::RESET << std::endl;
+    std::cout << Color::DARK_GRAY << "│" << std::endl;
+    std::cout << Color::DARK_GRAY << "│ User name ( Discord ): luuxo2455_17235 | .luuxosozen." << Color::RESET<< std::endl;
+    std::cout << Color::DARK_GRAY << "│ User name ( Instagram ) : levraitwisty ( Twisty ) | luuxo43 ( Luuxo La )" << Color::RESET << std::endl;
+    std::cout << Color::DARK_GRAY << "│" << std::endl;
+    std::cout << Color::DARK_GRAY << "│ [Message from the developer ( LUUXO ) ] Thanks to the beta tester :) " << Color::RESET << std::endl;
+    std::cout << Color::DARK_GRAY << "│" << std::endl;
+    std::cout << Color::DARK_GRAY << "└────────────────────────────────────────────────────────/─>" << Color::RESET << std::endl;
     
     std::cout << "\n\n" << std::endl;
     
@@ -62,7 +60,7 @@ inline void menu(int argc, char* argv[]) {
             std::cin.exceptions(std::ios::failbit | std::ios::badbit);
             std::string command;
 
-            std::cout << "┌───(RedFlower's@" << name <<")-[~]" << std::endl;
+            std::cout <<"┌───(" << Color::RED << "RedFlower's" << Color::DARK_GRAY << "@" << Color::BLUE << name << Color::RESET << ")-[~]" << std::endl;
             std::cout << "│" << std::endl;
             std::cout << "└$ ";
             std::cin >> command;
@@ -156,9 +154,11 @@ inline void menu(int argc, char* argv[]) {
             }
             else if (command == "threads") {
                 std::string pid_arg;
+                
                 if (std::cin.peek() != '\n' && std::cin.peek() != EOF) {
                     std::cin >> pid_arg;
                 }
+                
                 std::string dummy;
                 std::getline(std::cin, dummy);
                 list_process_threads(pid_arg);
@@ -189,29 +189,32 @@ inline void menu(int argc, char* argv[]) {
                 std::string func_name = "";
 
                 if (!arg3.empty()) {
-                    try {
-                        target_pid = std::stoul(arg1, nullptr, 0);
-                        addr_str = arg2;
-                        func_name = arg3;
-                    } catch (...) {
+                    target_pid = static_cast<DWORD>(std::stoul(arg1, nullptr, 0));
+                    addr_str = arg2;
+                    func_name = arg3;
+                } 
+                else if (!arg2.empty()) {
+                    if (arg1.rfind("0x", 0) == 0 || arg1.rfind("0X", 0) == 0) {
                         addr_str = arg1;
                         func_name = arg2;
-                    }
-                } else if (!arg2.empty()) {
-                    try {
-                        uintptr_t test_val = std::stoull(arg1, nullptr, 16);
-                        if (test_val > 0x100000) {
+                    } else {
+                        try {
+                            size_t idx = 0;
+                            unsigned long possible_pid = std::stoul(arg1, &idx, 0);
+                            if (idx == arg1.length() && possible_pid < 100000) {
+                                target_pid = static_cast<DWORD>(possible_pid);
+                                addr_str = arg2;
+                            } else {
+                                addr_str = arg1;
+                                func_name = arg2;
+                            }
+                        } catch (...) {
                             addr_str = arg1;
                             func_name = arg2;
-                        } else {
-                            target_pid = static_cast<DWORD>(std::stoul(arg1, nullptr, 0));
-                            addr_str = arg2;
                         }
-                    } catch (...) {
-                        addr_str = arg1;
-                        func_name = arg2;
                     }
-                } else {
+                } 
+                else {
                     addr_str = arg1;
                 }
 
